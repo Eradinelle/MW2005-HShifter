@@ -8,8 +8,7 @@ This fork contains modifications and additional source documentation developed
 for use with the RealManual project.
 
 ## Usage
-1. Download and place the [MW2005-HShifter.asi](https://github.com/Eradinelle/MW2005-HShifter/releases/tag/HShifter-v1.1) file either in the game folder or the `scripts` folder in the main game directory.
-2. Start the game, and press the number keys (0–7) to shift into the corresponding gear. (NOT Num-Pad keys)! There is no UI for the mod.
+Download and place the [MW2005-HShifter.asi](https://github.com/Eradinelle/MW2005-HShifter/releases/tag/HShifter-v1.1) file either in the game folder or the `scripts` folder in the main game directory.
 
 ## Notes
 
@@ -21,4 +20,5 @@ for use with the RealManual project.
 
 ## License
 **MIT License**
+Copyright (c) 2025 x0reaxeax
 Copyright (c) 2026 Eradinelle
