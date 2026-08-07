@@ -4,10 +4,6 @@
 
 This repository is a modified fork of MW2005-HShifter by x0reaxeax.
 
-The original project is available at:
-
-[x0reaxeax/MW2005-HShifter](https://github.com/x0reaxeax/MW2005-HShifter)
-
 This fork contains modifications and additional source documentation developed
 for use with the RealManual project.
 
@@ -21,7 +17,8 @@ for use with the RealManual project.
 
 ## Sources
 [MinHook - GitHub](https://github.com/TsudaKageyu/minhook)
+[MW2005-HShifter - Github](https://github.com/x0reaxeax/MW2005-HShifter)
 
 ## License
 **MIT License**
-Copyright (c) 2025 x0reaxeax
+Copyright (c) 2026 Eradinelle
