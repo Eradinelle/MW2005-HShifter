@@ -5,18 +5,18 @@
  *
  */
 
-#if defined(_M_IX86) || defined(__i386__)
+#if defined(_M_IX86) || defined(__i386__) // compiles this implementation only when targeting 32-bit x86
 
-#include <string.h>
-#include "hde32.h"
-#include "table32.h"
+#include <string.h> 
+#include "hde32.h" // declares hde32s, decoder flags, prefix bits, and hde32_disasm
+#include "table32.h" // provides the compressed x86 opcode-decoding table and table offsets
 
-unsigned int hde32_disasm(const void *code, hde32s *hs)
+unsigned int hde32_disasm(const void *code, hde32s *hs) // decodes one instruction at code and writes its metadata into hs
 {
-    uint8_t x, c, *p = (uint8_t *)code, cflags, opcode, pref = 0;
-    uint8_t *ht = hde32_table, m_mod, m_reg, m_rm, disp_size = 0;
+    uint8_t x, c, *p = (uint8_t *)code, cflags, opcode, pref = 0; // creates byte-sized temporaries, a byte cursor, opcode flags, and a prefix mask
+    uint8_t *ht = hde32_table, m_mod, m_reg, m_rm, disp_size = 0; // points at the decoding table and reserves parsed modr/m fields and displacement size
 
-    memset(hs, 0, sizeof(hde32s));
+    memset(hs, 0, sizeof(hde32s)); // initializes every output field to zero so absent fields remain unambiguously unset
 
     for (x = 16; x; x--)
         switch (c = *p++) {

@@ -26,7 +26,23 @@
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <windows.h>
+ /**
+ * @file buffer.c
+ * @brief implements MinHook's current-process executable trampoline allocator.
+ *
+ * role:
+ *
+ * MinHook cannot call the original GetRawInputData entry after replacing that
+ * entry with a jump to HookGetRawInputData. It therefore constructs a
+ * trampoline containing relocated original instructions and a jump back to the
+ * unmodified remainder of GetRawInputData.
+ *
+ * this source allocates 4 KiB executable blocks, subdivides each block into
+ * fixed-size slots, hands slots to trampoline.c, and recycles them when hooks
+ * are removed.
+ */
+
+#include <windows.h> // imports VirtualAlloc, VirtualFree, VirtualQuery, memory-protection flags, and Win32 types
 #include "buffer.h"
 
 // Size of each memory block. (= page size of VirtualAlloc)
@@ -302,11 +318,48 @@ VOID FreeBuffer(LPVOID pBuffer)
     }
 }
 
-//-------------------------------------------------------------------------
+/**
+ * @brief validates that an address belongs to committed executable memory
+ * before MinHook attempts to treat it as code.
+ *
+ * changes:
+ * - initializes MEMORY_BASIC_INFORMATION to zero so its fields have
+ *   deterministic values even if the Windows query does not succeed.
+ * - explicitly rejects a null address before calling VirtualQuery().
+ * - verifies that VirtualQuery() succeeded before reading the returned
+ *   memory-region information.
+ * - rejects regions that are not in the MEM_COMMIT state, excluding free
+ *   and merely reserved address ranges.
+ * - explicitly rejects PAGE_GUARD and PAGE_NOACCESS regions even if other
+ *   protection flags are present.
+ * - returns TRUE only when the validated region contains one of the
+ *   executable protection flags represented by PAGE_EXECUTE_FLAGS.
+ *
+ * the original implementation assumed VirtualQuery() succeeded and could
+ * therefore inspect uninitialized MEMORY_BASIC_INFORMATION data if the query
+ * failed. the updated version fails safely when Windows cannot confirm that
+ * the supplied address refers to committed, normally accessible executable
+ * memory.
+ */
 BOOL IsExecutableAddress(LPVOID pAddress)
 {
-    MEMORY_BASIC_INFORMATION mi;
-    VirtualQuery(pAddress, &mi, sizeof(mi));
+    MEMORY_BASIC_INFORMATION mi = {0}; // Ensures deterministic values before the Windows call
 
-    return (mi.State == MEM_COMMIT && (mi.Protect & PAGE_EXECUTE_FLAGS));
+    if (pAddress == NULL) {
+        return FALSE;
+    }
+
+    if (VirtualQuery(pAddress, &mi, sizeof(mi)) == 0) { // rejects address windows could not describe
+        return FALSE;
+    }
+
+    if (mi.State != MEM_COMMIT) { // rejects free or only reserved memory
+        return FALSE;
+    }
+
+    if ((mi.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) { // rejects pages that cannot be read or executed normally
+        return FALSE;
+    }
+
+    return (mi.Protect & PAGE_EXECUTE_FLAGS) != 0;
 }

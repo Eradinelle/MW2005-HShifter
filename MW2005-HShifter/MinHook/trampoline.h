@@ -26,6 +26,7 @@
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
 #pragma once
 
 #pragma pack(push, 1)
@@ -86,6 +87,7 @@ typedef struct _JCC_ABS
 } JCC_ABS;
 
 #pragma pack(pop)
+
 
 typedef struct _TRAMPOLINE
 {

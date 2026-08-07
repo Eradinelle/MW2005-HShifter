@@ -26,6 +26,7 @@
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
 #include <windows.h>
 
 #if defined(_MSC_VER) && !defined(MINHOOK_DISABLE_INTRINSICS)
@@ -42,7 +43,7 @@
     typedef hde64s HDE;
     #define HDE_DISASM(code, hs) hde64_disasm(code, hs)
 #else
-    #include "./hde/hde32.h"
+    #include "./hde/hde32.h" // imports functioning decoder
     typedef hde32s HDE;
     #define HDE_DISASM(code, hs) hde32_disasm(code, hs)
 #endif
@@ -57,12 +58,12 @@
     #define TRAMPOLINE_MAX_SIZE MEMORY_SLOT_SIZE
 #endif
 
-//-------------------------------------------------------------------------
-static BOOL IsCodePadding(LPBYTE pInst, UINT size)
+
+static BOOL IsCodePadding(LPBYTE pInst, UINT size) 
 {
     UINT i;
 
-    if (pInst[0] != 0x00 && pInst[0] != 0x90 && pInst[0] != 0xCC)
+    if (pInst[0] != 0x00 && pInst[0] != 0x90 && pInst[0] != 0xCC) // accepts only zero-fill, NOP, or INT3 as the first padding byte.
         return FALSE;
 
     for (i = 1; i < size; ++i)
@@ -73,76 +74,95 @@ static BOOL IsCodePadding(LPBYTE pInst, UINT size)
     return TRUE;
 }
 
-//-------------------------------------------------------------------------
 BOOL CreateTrampolineFunction(PTRAMPOLINE ct)
 {
 #if defined(_M_X64) || defined(__x86_64__)
-    CALL_ABS call = {
+    CALL_ABS call = { // creates a mutable x64 absolute-call template on the stack.
         0xFF, 0x15, 0x00000002, // FF15 00000002: CALL [RIP+8]
         0xEB, 0x08,             // EB 08:         JMP +10
         0x0000000000000000ULL   // Absolute destination address
     };
-    JMP_ABS jmp = {
+    JMP_ABS jmp = { // creates a mutable x64 absolute-jump template.
         0xFF, 0x25, 0x00000000, // FF25 00000000: JMP [RIP+6]
         0x0000000000000000ULL   // Absolute destination address
     };
-    JCC_ABS jcc = {
+    JCC_ABS jcc = { // creates a mutable x64 conditional-absolute-jump template.
         0x70, 0x0E,             // 7* 0E:         J** +16
         0xFF, 0x25, 0x00000000, // FF25 00000000: JMP [RIP+6]
         0x0000000000000000ULL   // Absolute destination address
     };
 #else
-    CALL_REL call = {
+    CALL_REL call = { // creates the active Win32 relative-call template.
         0xE8,                   // E8 xxxxxxxx: CALL +5+xxxxxxxx
         0x00000000              // Relative destination address
     };
-    JMP_REL jmp = {
+    JMP_REL jmp = { // creates the active Win32 relative-jump template.
         0xE9,                   // E9 xxxxxxxx: JMP +5+xxxxxxxx
         0x00000000              // Relative destination address
     };
-    JCC_REL jcc = {
+    JCC_REL jcc = { // creates the active Win32 near-conditional-jump template.
         0x0F, 0x80,             // 0F8* xxxxxxxx: J** +6+xxxxxxxx
         0x00000000              // Relative destination address
     };
 #endif
 
-    UINT8     oldPos   = 0;
-    UINT8     newPos   = 0;
+    /**
+    * oldPos counts bytes consumed from the target function.
+    * newPos counts bytes emitted into the trampoline.
+    *
+    * They can differ because a short branch may be expanded into a longer form.
+    *
+    * jmpDest tracks the furthest destination of a branch that stays inside the
+    * first five target bytes. MinHook must continue copying through that point.
+    */
+    UINT8     oldPos   = 0; // starts at the first byte of the target.
+    UINT8     newPos   = 0; // starts at the first byte of the trampoline slot.
     ULONG_PTR jmpDest  = 0;     // Destination address of an internal jump.
     BOOL      finished = FALSE; // Is the function completed?
 #if defined(_M_X64) || defined(__x86_64__)
-    UINT8     instBuf[16];
+    UINT8     instBuf[16]; // provides temporary editable instruction storage for x64 RIP-relative relocation.
 #endif
 
-    ct->patchAbove = FALSE;
-    ct->nIP        = 0;
+/* Reset the output-only fields before beginning generation. */
+    ct->patchAbove = FALSE; // assumes the normal entry-patch strategy until proven otherwise.
+    ct->nIP        = 0; // clears the output instruction-boundary count.
 
+    /**
+    * Process one original instruction per iteration. The loop finishes only after
+    * a return, an external unconditional jump, an x64 indirect jump, or an
+    * appended jump back to the untouched target code completes the trampoline.
+    */
     do
     {
-        HDE       hs;
-        UINT      copySize;
-        LPVOID    pCopySrc;
-        ULONG_PTR pOldInst = (ULONG_PTR)ct->pTarget     + oldPos;
-        ULONG_PTR pNewInst = (ULONG_PTR)ct->pTrampoline + newPos;
+        HDE       hs; // allocates one decoder result for the current original instruction.
+        UINT      copySize; // will hold the number of bytes emitted this iteration.
+        LPVOID    pCopySrc; // will point to original bytes or a rewritten local template.
+        ULONG_PTR pOldInst = (ULONG_PTR)ct->pTarget     + oldPos; // addresses the next unconsumed target instruction.
+        ULONG_PTR pNewInst = (ULONG_PTR)ct->pTrampoline + newPos; // addresses the next free trampoline byte.
 
-        copySize = HDE_DISASM((LPVOID)pOldInst, &hs);
-        if (hs.flags & F_ERROR)
-            return FALSE;
+        /**
+        * Decode one complete target instruction. In the Win32 game build this
+        * expands to hde32_disasm(). Any HDE error makes the target unsupported rather
+        * than risking a malformed trampoline.
+        */
+        copySize = HDE_DISASM((LPVOID)pOldInst, &hs); // decodes the current target instruction and returns its original length.
+        if (hs.flags & F_ERROR) // checks HDE's summary error flag.
+            return FALSE; // rejects undecodable or invalid target code.
 
-        pCopySrc = (LPVOID)pOldInst;
+        pCopySrc = (LPVOID)pOldInst; // defaults to copying the original instruction unchanged.
         if (oldPos >= sizeof(JMP_REL))
         {
             // The trampoline function is long enough.
             // Complete the function with the jump to the target function.
 #if defined(_M_X64) || defined(__x86_64__)
-            jmp.address = pOldInst;
+            jmp.address = pOldInst; // sets the x64 absolute jump-back destination.
 #else
-            jmp.operand = (UINT32)(pOldInst - (pNewInst + sizeof(jmp)));
+            jmp.operand = (UINT32)(pOldInst - (pNewInst + sizeof(jmp))); // calculates the Win32 rel32 jump-back displacement.
 #endif
-            pCopySrc = &jmp;
-            copySize = sizeof(jmp);
+            pCopySrc = &jmp; // selects the generated jump template as this iteration's source.
+            copySize = sizeof(jmp); // emits the jump template's full encoded size.
 
-            finished = TRUE;
+            finished = TRUE; // marks the trampoline complete after the jump-back is emitted.
         }
 #if defined(_M_X64) || defined(__x86_64__)
         else if ((hs.modrm & 0xC7) == 0x05)
