@@ -6,7 +6,7 @@ This repository is a modified fork of MW2005-HShifter by x0reaxeax.
 
 The original project is available at:
 
-x0reaxeax/MW2005-HShifter
+[x0reaxeax/MW2005-HShifter](https://github.com/x0reaxeax/MW2005-HShifter)
 
 This fork contains modifications and additional source documentation developed
 for use with the RealManual project.
