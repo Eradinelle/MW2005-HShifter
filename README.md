@@ -7,6 +7,8 @@ This repository is a modified fork of MW2005-HShifter by x0reaxeax.
 This fork contains modifications and additional source documentation developed
 for use with the RealManual project.
 
+https://github.com/Eradinelle/RealManual
+
 ## Usage
 Download and place the [MW2005-HShifter.asi](https://github.com/Eradinelle/MW2005-HShifter/releases/tag/HShifter-v1.1) file either in the game folder or the `scripts` folder in the main game directory.
 
